@@ -29,6 +29,10 @@
 - OpenAI API密钥（用于OpenAI模型）
 - 其他模型提供商的API密钥
 
+## 快速开始（可执行文件版本）
+
+对于Windows用户，您可以从[Releases](https://github.com/yourusername/ai-debate-platform/releases)页面下载即用型可执行文件版本。只需下载并运行.exe文件 - 无需安装或Python环境。
+
 ## 安装方法
 
 1. 克隆此仓库：
