@@ -29,6 +29,10 @@ A Python-based application that enables debates and answer optimization between 
 - OpenAI API key (for OpenAI models)
 - Additional API keys for other model providers
 
+## Quick Start (Executable Version)
+
+For Windows users, you can download the ready-to-use executable version from the [Releases](https://github.com/yourusername/ai-debate-platform/releases) page. Simply download and run the .exe file - no installation or Python environment required.
+
 ## Installation
 
 1. Clone this repository:
