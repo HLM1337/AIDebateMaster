@@ -31,14 +31,14 @@
 
 ## 快速开始（可执行文件版本）
 
-对于Windows用户，您可以从[Releases](https://github.com/yourusername/ai-debate-platform/releases)页面下载即用型可执行文件版本。只需下载并运行.exe文件 - 无需安装或Python环境。
+对于Windows用户，您可以从[Releases](https://github.com/HLM1337/AIDebateMaster/releases)页面下载即用型可执行文件版本。只需下载并运行.exe文件 - 无需安装或Python环境。
 
 ## 安装方法
 
 1. 克隆此仓库：
 ```bash
-git clone https://github.com/yourusername/ai-debate-platform.git
-cd ai-debate-platform
+git clone https://github.com/HLM1337/AIDebateMaster.git
+cd AIDebateMaster
 ```
 
 2. 安装所需依赖：

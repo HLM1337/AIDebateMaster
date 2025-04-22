@@ -31,14 +31,14 @@ A Python-based application that enables debates and answer optimization between 
 
 ## Quick Start (Executable Version)
 
-For Windows users, you can download the ready-to-use executable version from the [Releases](https://github.com/yourusername/ai-debate-platform/releases) page. Simply download and run the .exe file - no installation or Python environment required.
+For Windows users, you can download the ready-to-use executable version from the [Releases](https://github.com/HLM1337/AIDebateMaster/releases) page. Simply download and run the .exe file - no installation or Python environment required.
 
 ## Installation
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/ai-debate-platform.git
-cd ai-debate-platform
+git clone https://github.com/HLM1337/AIDebateMaster.git
+cd AIDebateMaster
 ```
 
 2. Install the required dependencies:
