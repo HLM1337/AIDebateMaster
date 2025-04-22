@@ -37,29 +37,30 @@ class DebateWorker(QThread):
         self.running = False
     
     def run(self):
-        """运行辩论进程"""
+        """运行辩论或优化进程"""
         try:
             if not (self.config.get('api_key1') and self.config.get('api_key2')):
-                self.error_signal.emit("错误: 请为正方和反方分别提供API密钥")
+                self.error_signal.emit("错误: 请为两个模型分别提供API密钥")
                 return
                 
             if not self.config['question']:
-                self.error_signal.emit("错误: 请提供辩论主题")
+                self.error_signal.emit("错误: 请提供辩论主题或待优化问题")
                 return
             
             # 检测模型类型和需要的API
             model1 = self.config['model1']
             model2 = self.config['model2']
+            work_mode = self.config.get('mode', 'debate')  # 默认为辩论模式
             
             # 检测是否使用自定义API
             is_custom_api = 'api_base1' in self.config and 'api_base2' in self.config
             
             if is_custom_api:
                 self.update_signal.emit("使用自定义API服务器...\n")
-                self.update_signal.emit(f"正方自定义API基础URL: {self.config['api_base1']}\n")
-                self.update_signal.emit(f"反方自定义API基础URL: {self.config['api_base2']}\n")
-                self.update_signal.emit(f"正方模型名称: {model1}\n")
-                self.update_signal.emit(f"反方模型名称: {model2}\n")
+                self.update_signal.emit(f"模型1自定义API基础URL: {self.config['api_base1']}\n")
+                self.update_signal.emit(f"模型2自定义API基础URL: {self.config['api_base2']}\n")
+                self.update_signal.emit(f"模型1名称: {model1}\n")
+                self.update_signal.emit(f"模型2名称: {model2}\n")
             else:
                 # 检测模型类型
                 models_info = []
@@ -85,10 +86,16 @@ class DebateWorker(QThread):
                 if models_info:
                     self.update_signal.emit(f"检测到以下模型类型: {', '.join(models_info)}\n")
             
-            self.update_signal.emit("配置辩论参数...\n")
+            self.update_signal.emit("配置参数...\n")
+            self.update_signal.emit(f"工作模式: {'辩论模式' if work_mode == 'debate' else '问题优化模式'}\n")
             self.update_signal.emit(f"模型1: {model1}, 温度: {self.config['temperature1']}\n")
             self.update_signal.emit(f"模型2: {model2}, 温度: {self.config['temperature2']}\n")
-            self.update_signal.emit(f"回合数: {self.config['rounds']}\n")
+            
+            if work_mode == 'debate':
+                self.update_signal.emit(f"辩论回合数: {self.config['rounds']}\n")
+            else:
+                self.update_signal.emit(f"优化迭代次数: {self.config['rounds']}\n")
+                
             self.update_signal.emit(f"流式输出: {'启用' if self.config.get('stream', True) else '禁用'}\n")
             
             self.update_signal.emit("\n")  # 添加空行分隔
@@ -114,18 +121,33 @@ class DebateWorker(QThread):
             
             debate = AIDebateWrapper(**debate_kwargs)
             
-            # 运行辩论
-            self.update_signal.emit(f"开始辩论:\n")
-            self.update_signal.emit(f"主题: {self.config['question']}\n")
-            self.update_signal.emit(f"正方: {model1} (温度: {self.config['temperature1']})\n")
-            self.update_signal.emit(f"反方: {model2} (温度: {self.config['temperature2']})\n")
-            self.update_signal.emit("-" * 50 + "\n\n")
-            
-            # 运行辩论
-            result = debate.run_debate(
-                question=self.config['question'],
-                rounds=self.config['rounds']
-            )
+            # 运行指定模式
+            if work_mode == 'debate':
+                # 辩论模式
+                self.update_signal.emit(f"开始辩论:\n")
+                self.update_signal.emit(f"主题: {self.config['question']}\n")
+                self.update_signal.emit(f"正方: {model1} (温度: {self.config['temperature1']})\n")
+                self.update_signal.emit(f"反方: {model2} (温度: {self.config['temperature2']})\n")
+                self.update_signal.emit("-" * 50 + "\n\n")
+                
+                # 运行辩论
+                result = debate.run_debate(
+                    question=self.config['question'],
+                    rounds=self.config['rounds']
+                )
+            else:
+                # 问题优化模式
+                self.update_signal.emit(f"开始答案优化:\n")
+                self.update_signal.emit(f"待解答问题: {self.config['question']}\n")
+                self.update_signal.emit(f"分析师: {model1} (温度: {self.config['temperature1']})\n")
+                self.update_signal.emit(f"优化师: {model2} (温度: {self.config['temperature2']})\n")
+                self.update_signal.emit("-" * 50 + "\n\n")
+                
+                # 运行问题优化
+                result = debate.run_optimization(
+                    question=self.config['question'],
+                    iterations=self.config['rounds']
+                )
             
             # 保存日志
             if self.config.get('log_file'):
@@ -140,13 +162,13 @@ class DebateWorker(QThread):
                 with open(filename, 'w', encoding='utf-8') as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
                 
-                self.update_signal.emit(f"\n辩论结果已保存至: {filename}\n")
+                self.update_signal.emit(f"\n结果已保存至: {filename}\n")
             
             # 辩论结束，发送结果信号
             self.finished_signal.emit(result)
             
         except Exception as e:
-            error_msg = f"辩论过程中发生错误: {str(e)}"
+            error_msg = f"过程中发生错误: {str(e)}"
             print(f"错误详情: {str(e)}")
             import traceback
             traceback.print_exc()
@@ -193,6 +215,39 @@ class AIDebateWrapper(AIDebate):
         try:
             # 调用父类方法运行辩论
             result = super().run_debate(question, rounds)
+            # 恢复原始print函数
+            builtins.print = original_print
+            return result
+        except Exception as e:
+            self.update_signal.emit(f"错误: {str(e)}\n")
+            # 确保恢复原始print函数
+            builtins.print = original_print
+            raise
+    
+    def run_optimization(self, question, iterations):
+        """运行问题优化并更新UI"""
+        self.current_round = 0
+        self.total_rounds = iterations
+        
+        # 替换原始的print输出，重定向到GUI
+        original_print = print
+        def custom_print(*args, **kwargs):
+            # 将print内容发送到GUI
+            text = " ".join(str(arg) for arg in args)
+            # 为每条print消息添加换行，确保格式正确
+            if not text.endswith("\n"):
+                text += "\n"
+            self.update_signal.emit(text)
+            # 也保留原始print功能以便调试
+            original_print(*args, **kwargs)
+        
+        # 替换全局print函数
+        import builtins
+        builtins.print = custom_print
+        
+        try:
+            # 调用父类方法运行问题优化
+            result = super().run_optimization(question, iterations)
             # 恢复原始print函数
             builtins.print = original_print
             return result
@@ -262,7 +317,7 @@ class MainWindow(QMainWindow):
     
     def initUI(self):
         """初始化UI"""
-        self.setWindowTitle("AI辩论系统")
+        self.setWindowTitle("AI辩论与问题优化系统")
         self.setGeometry(100, 100, 1000, 700)
         
         # 创建主窗口部件
@@ -273,8 +328,18 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(main_widget)
         
         # 创建设置组
-        settings_group = QGroupBox("辩论设置")
+        settings_group = QGroupBox("系统设置")
         settings_layout = QVBoxLayout()
+        
+        # 工作模式选择
+        mode_layout = QHBoxLayout()
+        mode_label = QLabel("工作模式:")
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["辩论模式", "问题优化模式"])
+        self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
+        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(self.mode_combo)
+        settings_layout.addLayout(mode_layout)
         
         # API密钥设置框
         api_group = QGroupBox("API密钥设置")
@@ -286,7 +351,7 @@ class MainWindow(QMainWindow):
         api_group_layout.addWidget(self.custom_api_check)
         
         # 正方API设置框
-        aff_api_box = QGroupBox("正方API设置")
+        aff_api_box = QGroupBox("模型1 API设置")
         aff_api_box_layout = QVBoxLayout()
         
         # 正方API基础URL输入框
@@ -322,7 +387,7 @@ class MainWindow(QMainWindow):
         api_group_layout.addWidget(aff_api_box)
         
         # 反方API设置框
-        neg_api_box = QGroupBox("反方API设置")
+        neg_api_box = QGroupBox("模型2 API设置")
         neg_api_box_layout = QVBoxLayout()
         
         # 反方API基础URL输入框
@@ -367,9 +432,9 @@ class MainWindow(QMainWindow):
         
         # 辩论主题设置
         topic_layout = QHBoxLayout()
-        topic_label = QLabel("辩论主题:")
+        self.topic_label = QLabel("辩论问题:")
         self.topic_input = QLineEdit()
-        topic_layout.addWidget(topic_label)
+        topic_layout.addWidget(self.topic_label)
         topic_layout.addWidget(self.topic_input)
         settings_layout.addLayout(topic_layout)
         
@@ -418,17 +483,17 @@ class MainWindow(QMainWindow):
             "ernie-": "百度文心一言"
         }
         
-        # 正方模型设置
+        # 模型1设置
         aff_layout = QVBoxLayout()
-        aff_label = QLabel("正方模型:")
+        self.model1_label = QLabel("正方模型:")
         self.model1_combo = QComboBox()
         self.model1_combo.addItems(self.available_models)
         self.model1_combo.setCurrentIndex(0)  # 默认选择第一个模型
         self.model1_combo.currentTextChanged.connect(self.on_model_changed)
-        aff_layout.addWidget(aff_label)
+        aff_layout.addWidget(self.model1_label)
         aff_layout.addWidget(self.model1_combo)
         
-        # 正方温度设置
+        # 模型1温度设置
         temp1_layout = QHBoxLayout()
         temp1_label = QLabel("温度:")
         self.temp1_spin = QDoubleSpinBox()
@@ -439,17 +504,17 @@ class MainWindow(QMainWindow):
         temp1_layout.addWidget(self.temp1_spin)
         aff_layout.addLayout(temp1_layout)
         
-        # 反方模型设置
+        # 模型2设置
         neg_layout = QVBoxLayout()
-        neg_label = QLabel("反方模型:")
+        self.model2_label = QLabel("反方模型:")
         self.model2_combo = QComboBox()
         self.model2_combo.addItems(self.available_models)
         self.model2_combo.setCurrentIndex(1)  # 默认选择第二个模型
         self.model2_combo.currentTextChanged.connect(self.on_model_changed)
-        neg_layout.addWidget(neg_label)
+        neg_layout.addWidget(self.model2_label)
         neg_layout.addWidget(self.model2_combo)
         
-        # 反方温度设置
+        # 模型2温度设置
         temp2_layout = QHBoxLayout()
         temp2_label = QLabel("温度:")
         self.temp2_spin = QDoubleSpinBox()
@@ -470,11 +535,11 @@ class MainWindow(QMainWindow):
         rounds_layout = QHBoxLayout()
         
         # 轮数设置
-        rounds_label = QLabel("辩论轮数:")
+        self.rounds_label = QLabel("辩论轮数:")
         self.rounds_spin = QSpinBox()
         self.rounds_spin.setRange(1, 10)
         self.rounds_spin.setValue(3)
-        rounds_layout.addWidget(rounds_label)
+        rounds_layout.addWidget(self.rounds_label)
         rounds_layout.addWidget(self.rounds_spin)
         
         # 流式输出设置
@@ -487,7 +552,7 @@ class MainWindow(QMainWindow):
         self.save_check.setChecked(True)
         self.save_path_button = QPushButton("浏览...")
         self.save_path_button.clicked.connect(self.browse_save_path)
-        self.save_path = "logs/debate_result.json"
+        self.save_path = "logs/result.json"
         
         rounds_layout.addWidget(self.save_check)
         rounds_layout.addWidget(self.save_path_button)
@@ -501,10 +566,10 @@ class MainWindow(QMainWindow):
         
         # 创建控制按钮
         button_layout = QHBoxLayout()
-        self.start_button = QPushButton("开始辩论")
-        self.start_button.clicked.connect(self.start_debate)
-        self.stop_button = QPushButton("停止辩论")
-        self.stop_button.clicked.connect(self.stop_debate)
+        self.start_button = QPushButton("开始")
+        self.start_button.clicked.connect(self.start_process)
+        self.stop_button = QPushButton("停止")
+        self.stop_button.clicked.connect(self.stop_process)
         self.stop_button.setEnabled(False)
         self.clear_button = QPushButton("清除输出")
         self.clear_button.clicked.connect(self.clear_output)
@@ -526,8 +591,8 @@ class MainWindow(QMainWindow):
         # 创建分割器，分隔辩论过程和结论
         splitter = QSplitter(Qt.Vertical)
         
-        # 创建辩论输出区域
-        output_group = QGroupBox("辩论过程")
+        # 创建输出区域
+        output_group = QGroupBox("处理过程")
         output_layout = QVBoxLayout()
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
@@ -538,27 +603,59 @@ class MainWindow(QMainWindow):
         output_group.setLayout(output_layout)
         
         # 创建结论显示区域
-        conclusion_group = QGroupBox("辩论结论")
+        self.conclusion_group = QGroupBox("最终答案与观点")
         conclusion_layout = QVBoxLayout()
         self.conclusion_text = QTextEdit()
         self.conclusion_text.setReadOnly(True)
         self.conclusion_text.setFont(QFont("Courier New", 10))
         conclusion_layout.addWidget(self.conclusion_text)
-        conclusion_group.setLayout(conclusion_layout)
+        self.conclusion_group.setLayout(conclusion_layout)
         
         # 添加到分割器
         splitter.addWidget(output_group)
-        splitter.addWidget(conclusion_group)
+        splitter.addWidget(self.conclusion_group)
         splitter.setSizes([500, 200])
         
         # 添加到主布局
         main_layout.addWidget(splitter)
+        
+        # 初始化模式相关UI
+        self.on_mode_changed(0)  # 默认为辩论模式
+    
+    def on_mode_changed(self, index):
+        """当工作模式变化时更新UI"""
+        mode = "debate" if index == 0 else "optimization"
+        
+        # 更新标签文本
+        if mode == "debate":
+            self.topic_label.setText("辩论问题:")
+            self.model1_label.setText("正方模型:")
+            self.model2_label.setText("反方模型:")
+            self.rounds_label.setText("辩论轮数:")
+            self.conclusion_group.setTitle("最终答案与观点")
+            self.start_button.setText("开始辩论")
+        else:
+            self.topic_label.setText("待解答问题:")
+            self.model1_label.setText("分析师模型:")
+            self.model2_label.setText("优化师模型:")
+            self.rounds_label.setText("答案优化次数:")
+            self.conclusion_group.setTitle("最终优化答案")
+            self.start_button.setText("开始优化")
+        
+        # 更新状态栏
+        if mode == "debate":
+            self.statusBar().showMessage("已切换到辩论模式，通过多角度讨论获得高质量答案", 3000)
+        else:
+            self.statusBar().showMessage("已切换到答案优化模式，通过持续分析和改进获得最佳答案", 3000)
     
     def browse_save_path(self):
         """浏览保存路径对话框"""
         options = QFileDialog.Options()
+        # 根据当前模式设置默认文件名
+        mode = "debate" if self.mode_combo.currentIndex() == 0 else "optimization"
+        default_filename = "debate_result.json" if mode == "debate" else "optimization_result.json"
         file_name, _ = QFileDialog.getSaveFileName(
-            self, "选择保存路径", self.save_path,
+            self, "选择保存路径", os.path.join("logs", default_filename),
             "JSON文件 (*.json);;所有文件 (*)", options=options
         )
         if file_name:
@@ -598,37 +695,41 @@ class MainWindow(QMainWindow):
             self.neg_model_name_input.setPlaceholderText("例如: mistral-medium 或 gemma-7b")
             self.neg_model_name_input.setStyleSheet("")
     
-    def start_debate(self):
-        """启动辩论进程"""
+    def start_process(self):
+        """启动辩论或优化进程"""
+        # 获取当前模式
+        mode = "debate" if self.mode_combo.currentIndex() == 0 else "optimization"
+        
         # 检查必要条件
         if not (self.aff_api_key_input.text() and self.neg_api_key_input.text()):
-            QMessageBox.warning(self, "缺少API密钥", "请为正方和反方分别输入API密钥")
+            QMessageBox.warning(self, "缺少API密钥", f"请为{'正方和反方' if mode == 'debate' else '分析师和优化师'}分别输入API密钥")
             return
             
         if not self.topic_input.text():
-            QMessageBox.warning(self, "缺少辩论主题", "请输入辩论主题")
+            QMessageBox.warning(self, "缺少内容", f"请输入{'辩论主题' if mode == 'debate' else '待优化问题'}")
             return
             
         # 检查如果使用自定义URL但没有输入模型名称
         if self.custom_api_check.isChecked():
             if not self.aff_api_url_input.text():
-                QMessageBox.warning(self, "缺少API基础URL", "使用自定义API时，必须输入正方API基础URL")
+                QMessageBox.warning(self, "缺少API基础URL", "使用自定义API时，必须输入模型1的API基础URL")
                 return
                 
             if not self.neg_api_url_input.text():
-                QMessageBox.warning(self, "缺少API基础URL", "使用自定义API时，必须输入反方API基础URL")
+                QMessageBox.warning(self, "缺少API基础URL", "使用自定义API时，必须输入模型2的API基础URL")
                 return
                 
             if not self.aff_model_name_input.text():
-                QMessageBox.warning(self, "缺少模型名称", "使用自定义API基础URL时，必须输入正方自定义模型名称")
+                QMessageBox.warning(self, "缺少模型名称", "使用自定义API基础URL时，必须输入模型1的自定义模型名称")
                 return
                 
             if not self.neg_model_name_input.text():
-                QMessageBox.warning(self, "缺少模型名称", "使用自定义API基础URL时，必须输入反方自定义模型名称")
+                QMessageBox.warning(self, "缺少模型名称", "使用自定义API基础URL时，必须输入模型2的自定义模型名称")
                 return
         
         # 准备配置
         config = {
+            'mode': mode,
             'use_separate_api': True,
             'api_key1': self.aff_api_key_input.text(),
             'api_key2': self.neg_api_key_input.text(),
@@ -653,6 +754,14 @@ class MainWindow(QMainWindow):
         
         # 如果选择了保存，添加日志文件路径
         if self.save_check.isChecked():
+            # 根据模式设置默认保存文件名
+            if not self.save_path or self.save_path == "logs/result.json":
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                if mode == "debate":
+                    self.save_path = f"logs/debate_result_{timestamp}.json"
+                else:
+                    self.save_path = f"logs/optimization_result_{timestamp}.json"
+            
             config['log_file'] = self.save_path
         
         # 清除之前的输出
@@ -664,7 +773,7 @@ class MainWindow(QMainWindow):
         self.debate_worker = DebateWorker(config)
         self.debate_worker.update_signal.connect(self.update_output)
         self.debate_worker.progress_signal.connect(self.progress_bar.setValue)
-        self.debate_worker.finished_signal.connect(self.debate_finished)
+        self.debate_worker.finished_signal.connect(self.process_finished)
         self.debate_worker.error_signal.connect(self.show_error)
         self.debate_worker.start()
         
@@ -672,12 +781,13 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
     
-    def stop_debate(self):
-        """停止辩论进程"""
+    def stop_process(self):
+        """停止辩论或优化进程"""
         if self.debate_worker and self.debate_worker.isRunning():
             self.debate_worker.stop()
             self.debate_worker.wait()
-            self.update_output("\n辩论已停止\n")
+            mode = "辩论" if self.mode_combo.currentIndex() == 0 else "优化"
+            self.update_output(f"\n{mode}已停止\n")
             self.start_button.setEnabled(True)
             self.stop_button.setEnabled(False)
     
@@ -699,29 +809,51 @@ class MainWindow(QMainWindow):
         self.scroll_to_bottom()
     
     @pyqtSlot(dict)
-    def debate_finished(self, result):
-        """辩论完成时的处理"""
+    def process_finished(self, result):
+        """处理完成时的处理"""
         # 在结论区域显示结果
         self.conclusion_text.clear()
         
-        # 根据AIDebate中定义的结果格式调整显示逻辑
+        # 获取当前模式
+        mode = "debate" if self.mode_combo.currentIndex() == 0 else "optimization"
+        
+        # 根据模式调整显示逻辑
         initial_question = result.get('initial_question', '')
-        conclusion_text = f"辩论主题: {initial_question}\n\n"
-        
-        # 获取对话历史并显示
-        conversation = result.get('conversation', [])
-        if conversation:
-            conclusion_text += "对话历史:\n\n"
-            for i, entry in enumerate(conversation):
-                role = entry.get('role', '未知')
-                content = entry.get('content', '')
-                if role != "最终结论":  # 最终结论单独展示
-                    conclusion_text += f"【{role}】\n{content}\n\n"
-                    conclusion_text += "-" * 40 + "\n\n"
-        
-        # 显示最终结论（如果有）
-        if 'final_answer' in result:
-            conclusion_text += f"最终结论:\n{result.get('final_answer', '')}\n"
+        if mode == "debate":
+            conclusion_text = f"问题: {initial_question}\n\n"
+            
+            # 获取对话历史并显示
+            conversation = result.get('conversation', [])
+            if conversation:
+                conclusion_text += "观点汇总:\n\n"
+                for i, entry in enumerate(conversation):
+                    role = entry.get('role', '未知')
+                    content = entry.get('content', '')
+                    if role != "最终结论":  # 最终结论单独展示
+                        conclusion_text += f"【{role}】\n{content}\n\n"
+                        conclusion_text += "-" * 40 + "\n\n"
+            
+            # 显示最终结论（如果有）
+            if 'final_answer' in result:
+                conclusion_text += f"最终答案:\n{result.get('final_answer', '')}\n"
+        else:
+            # 优化模式的显示逻辑
+            conclusion_text = f"问题: {initial_question}\n\n"
+            
+            # 获取优化过程并显示
+            conversation = result.get('conversation', [])
+            if conversation:
+                conclusion_text += "答案优化过程:\n\n"
+                for i, entry in enumerate(conversation):
+                    role = entry.get('role', '未知')
+                    content = entry.get('content', '')
+                    if role != "最终优化答案":  # 最终结果单独展示
+                        conclusion_text += f"【{role}】\n{content}\n\n"
+                        conclusion_text += "-" * 40 + "\n\n"
+            
+            # 显示最终优化结果（如果有）
+            if 'final_result' in result:
+                conclusion_text += f"最终优化答案:\n{result.get('final_result', '')}\n"
         
         self.conclusion_text.setText(conclusion_text)
         
@@ -732,8 +864,9 @@ class MainWindow(QMainWindow):
         # 更新进度条为100%
         self.progress_bar.setValue(100)
         
-        # 通知用户辩论已完成
-        self.update_output("\n辩论已完成! 请查看下方的结论区域。\n")
+        # 通知用户已完成
+        process_name = "辩论" if mode == "debate" else "答案优化"
+        self.update_output(f"\n{process_name}已完成! 您的问题已得到答案，请查看下方的结果区域。\n")
     
     @pyqtSlot(str)
     def show_error(self, error_message):

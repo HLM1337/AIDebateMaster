@@ -355,7 +355,7 @@ class AIDebate:
     
     def run_debate(self, initial_question: str, rounds: int = 3) -> Dict[str, Any]:
         """
-        运行AI之间的辩论
+        运行AI之间的辩论，针对问题获得全面深入的答案
         
         参数:
             initial_question: 初始问题
@@ -369,14 +369,14 @@ class AIDebate:
         print(f"API类型: {self.api_type1}, {self.api_type2}")
         print(f"流式输出: {'启用' if self.stream else '禁用'}\n")
         
-        self.log("info", f"开始辩论，主题: {initial_question}")
+        self.log("info", f"开始辩论，问题: {initial_question}")
         self.log("info", f"辩论回合数: {rounds}")
         
         conversation = []
         
         # 设置AI的角色特性，使其更有辩论性
-        ai1_role = f"你是一个具有批判性思维的AI助手，名为'AI 1'。你擅长从多角度思考问题，但倾向于支持主流、传统观点。你应该为自己的观点辩护，同时批判另一个AI可能存在的逻辑漏洞。"
-        ai2_role = f"你是一个具有创新思维的AI助手，名为'AI 2'。你擅长提出新颖的想法和视角，倾向于支持非传统、前沿观点。你应该为自己的观点辩护，同时批判另一个AI可能存在的局限性。"
+        ai1_role = f"你是一个具有批判性思维的AI助手，名为'AI 1'。你擅长从多角度思考问题，但倾向于支持主流、传统观点。你应该为自己的观点辩护，同时批判另一个AI可能存在的逻辑漏洞。最终目标是通过辩论形成对问题的深入理解，得出全面的答案。"
+        ai2_role = f"你是一个具有创新思维的AI助手，名为'AI 2'。你擅长提出新颖的想法和视角，倾向于支持非传统、前沿观点。你应该为自己的观点辩护，同时批判另一个AI可能存在的局限性。最终目标是通过辩论形成对问题的深入理解，得出全面的答案。"
         
         # 第一阶段：各自陈述初始观点
         print("==========================================")
@@ -478,8 +478,8 @@ class AIDebate:
         conclusion_model = self.model1 if self.model1.startswith("gpt-4") or self.model1.startswith("deepseek-reasoner") else self.model2
         
         conclusion_messages = [
-            {"role": "system", "content": "你是一个公正、全面的总结者。你的任务是分析两个AI之间的辩论，找出关键洞见，并提供一个平衡、综合的结论。"},
-            {"role": "user", "content": f"以下是两个AI围绕问题\"{initial_question}\"进行的辩论。请分析双方的观点和论据，然后提供一个平衡的结论，指出最有价值的见解。不要简单重复双方观点，而是真正整合它们的精华部分。\n\n{debate_history}"}
+            {"role": "system", "content": "你是一个公正、全面的总结者。你的任务是分析两个AI之间的辩论，找出关键洞见，并提供一个平衡、综合的答案。通过整合不同视角，你应当为用户提供最全面客观的解答。"},
+            {"role": "user", "content": f"以下是两个AI围绕问题\"{initial_question}\"进行的辩论。请分析双方的观点和论据，然后提供一个全面的答案，指出最有价值的见解。不要简单重复双方观点，而是真正整合它们的精华部分，为用户提供最佳解答。\n\n{debate_history}"}
         ]
         
         print(f"\n-- 生成最终结论 (使用 {conclusion_model}) --")
@@ -555,6 +555,197 @@ class AIDebate:
             self.log("error", f"保存结果到文件失败: {str(e)}")
             traceback.print_exc()
 
+    def run_optimization(self, initial_question: str, iterations: int = 3) -> Dict[str, Any]:
+        """
+        运行AI答案优化模式，两个AI协作分析问题并优化答案
+        
+        参数:
+            initial_question: 待解答问题
+            iterations: 答案优化迭代次数
+            
+        返回:
+            包含完整对话历史和最终优化答案的字典
+        """
+        print(f"待解答问题: {initial_question}\n")
+        print(f"使用模型: {self.model1} 和 {self.model2}")
+        print(f"API类型: {self.api_type1}, {self.api_type2}")
+        print(f"流式输出: {'启用' if self.stream else '禁用'}\n")
+        
+        self.log("info", f"开始答案优化，问题: {initial_question}")
+        self.log("info", f"答案优化迭代次数: {iterations}")
+        
+        conversation = []
+        
+        # 设置AI的角色特性
+        ai1_role = f"你是一个具有分析能力的AI助手，名为'分析师'。你擅长深入分析问题的本质，发现潜在盲点和假设。你的任务是分析问题并提出有见解的初步答案，同时指出答案可能存在的不足。最终目标是帮助用户获得最佳答案。"
+        ai2_role = f"你是一个具有创造性的AI助手，名为'优化师'。你擅长基于他人的分析改进答案。你的任务是吸收分析师的意见，并优化答案使其更加全面、准确和有深度。最终目标是帮助用户获得最佳答案。"
+        
+        current_question = initial_question
+        
+        # 第一阶段：初始分析
+        print("==========================================")
+        print("阶段1: 初始问题分析与答案")
+        self.log("info", "阶段1: 初始问题分析与答案")
+        
+        # 分析师(AI 1)进行初始分析
+        messages1 = [
+            {"role": "system", "content": ai1_role},
+            {"role": "user", "content": f"请分析以下问题并提供初步答案，同时指出你的答案可能存在的不足或局限性：\n\n{current_question}\n\n请先分析问题的关键点，然后给出初步答案，最后指出答案中可能存在的盲点或局限性。限制在300字以内。"}
+        ]
+        
+        print(f"\n-- 分析师 ({self.model1}) 分析问题并提供初步答案 --")
+        self.log("info", f"分析师 ({self.model1}) 分析问题并提供初步答案")
+        ai1_analysis = self.generate_response(self.model1, self.temperature1, messages1)
+        print(f"分析师 ({self.model1}) 分析与初步答案:\n{ai1_analysis}\n")
+        self.log("info", f"分析师分析与初步答案已生成，长度={len(ai1_analysis)}")
+        
+        conversation.append({"role": f"分析师 ({self.model1})", "content": ai1_analysis})
+        
+        # 第二阶段：迭代优化答案
+        for i in range(iterations):
+            print(f"==========================================")
+            print(f"阶段2: 第 {i+1}/{iterations} 轮答案优化")
+            self.log("info", f"阶段2: 第 {i+1}/{iterations} 轮答案优化")
+            
+            # 优化师(AI 2)基于分析提出优化答案
+            messages2 = [
+                {"role": "system", "content": ai2_role},
+                {"role": "user", "content": f"原始问题：\n{current_question}\n\n分析师的分析与初步答案：\n{ai1_analysis}\n\n请基于上述分析，提供一个优化后的答案，使其更加全面、准确和有深度。限制在300字以内。"}
+            ]
+            
+            print(f"\n-- 优化师 ({self.model2}) 优化答案 --")
+            self.log("info", f"优化师 ({self.model2}) 优化答案")
+            ai2_optimization = self.generate_response(self.model2, self.temperature2, messages2)
+            print(f"优化师 ({self.model2}) 优化答案:\n{ai2_optimization}\n")
+            self.log("info", f"优化答案已生成，长度={len(ai2_optimization)}")
+            
+            conversation.append({"role": f"优化师 ({self.model2})", "content": ai2_optimization})
+            
+            # 短暂暂停，避免API限制
+            time.sleep(1)
+            
+            # 分析师(AI 1)对优化答案进行进一步分析
+            if i < iterations - 1:  # 最后一轮不需要再分析
+                messages1 = [
+                    {"role": "system", "content": ai1_role},
+                    {"role": "user", "content": f"原始问题：\n{current_question}\n\n当前优化答案：\n{ai2_optimization}\n\n请分析这个答案的不足之处，指出可以进一步改进的方向。限制在250字以内。"}
+                ]
+                
+                print(f"\n-- 分析师 ({self.model1}) 分析优化答案的不足 --")
+                self.log("info", f"分析师 ({self.model1}) 分析优化答案的不足")
+                ai1_analysis = self.generate_response(self.model1, self.temperature1, messages1)
+                print(f"分析师 ({self.model1}) 分析:\n{ai1_analysis}\n")
+                self.log("info", f"分析师分析已生成，长度={len(ai1_analysis)}")
+                
+                conversation.append({"role": f"分析师 ({self.model1})", "content": ai1_analysis})
+                
+                # 更新当前答案为优化后的答案，用于下一轮迭代
+                current_question = ai2_optimization
+            
+            # 短暂暂停，避免API限制
+            time.sleep(1)
+        
+        # 第三阶段：生成最终优化答案
+        print("==========================================")
+        print("阶段3: 最终优化答案")
+        self.log("info", "阶段3: 生成最终优化答案")
+        
+        # 整合所有对话内容，向模型请求最终优化答案
+        optimization_history = "\n\n".join([
+            f"原始问题: {initial_question}",
+            f"分析师初始分析与答案: {conversation[0]['content']}"
+        ])
+        
+        for i in range(iterations):
+            if i < iterations - 1:
+                optimization_history += f"\n\n第 {i+1} 轮优化:"
+                optimization_history += f"\n优化师答案: {conversation[2*i+1]['content']}"
+                optimization_history += f"\n分析师反馈: {conversation[2*i+2]['content']}"
+            else:
+                optimization_history += f"\n\n最终轮优化:"
+                optimization_history += f"\n优化师答案: {conversation[2*i+1]['content']}"
+        
+        # 使用两个模型中性能更强的一个来生成最终结果
+        final_model = self.model1 if self.model1.startswith(("gpt-4", "claude-3", "deepseek-reasoner")) else self.model2
+        
+        final_messages = [
+            {"role": "system", "content": "你是一个精通解答问题的AI助手。你的任务是整合之前的所有分析和优化，提供一个最终的、综合的最佳答案。需要确保答案直接明确地回应用户的问题，并且全面、准确、有深度。"},
+            {"role": "user", "content": f"以下是关于一个问题的多轮分析和答案优化过程。请基于所有分析和优化建议，提供一个最终的优化答案。答案应该直接解决用户的问题核心，并且比之前的任何答案都更加全面、准确和有深度。\n\n原始问题：\n{initial_question}\n\n分析与优化过程：\n{optimization_history}\n\n请提供最终优化答案，确保直接解决问题核心，提供最高质量的回应。"}
+        ]
+        
+        print(f"\n-- 生成最终优化答案 (使用 {final_model}) --")
+        self.log("info", f"生成最终优化答案，使用模型: {final_model}")
+        final_result = self.generate_response(final_model, 0.6, final_messages)
+        print(f"最终优化答案:\n{final_result}\n")
+        self.log("info", f"最终优化答案已生成，长度={len(final_result)}")
+        
+        # 添加到对话历史
+        conversation.append({"role": "最终优化答案", "content": final_result})
+        
+        # 日志记录完整对话
+        self.log("info", "答案优化完成，记录完整对话历史")
+        self.create_full_optimization_log(initial_question, conversation)
+        
+        return {
+            "initial_question": initial_question,
+            "conversation": conversation,
+            "final_result": final_result
+        }
+    
+    def create_full_optimization_log(self, question: str, conversation: List[Dict[str, str]]):
+        """创建包含完整答案优化过程的日志文件"""
+        if not self.log_file:
+            return
+            
+        log_dir = os.path.dirname(self.log_file)
+        optimization_log = os.path.join(log_dir, f"optimization_{int(time.time())}.txt")
+        
+        try:
+            with open(optimization_log, 'w', encoding='utf-8') as f:
+                f.write(f"待解答问题: {question}\n")
+                f.write(f"时间: {datetime.datetime.now()}\n")
+                f.write(f"模型: {self.model1} 和 {self.model2}\n")
+                f.write("-" * 80 + "\n\n")
+                
+                for msg in conversation:
+                    f.write(f"【{msg['role']}】\n")
+                    f.write(f"{msg['content']}\n\n")
+                    f.write("-" * 40 + "\n\n")
+            
+            self.log("info", f"完整答案优化过程已保存至: {optimization_log}")
+            print(f"完整答案优化过程日志已保存至: {optimization_log}")
+        except Exception as e:
+            self.log("error", f"保存优化日志失败: {str(e)}")
+            print(f"保存优化日志失败: {str(e)}")
+    
+    def save_optimization(self, optimization_result: Dict[str, Any], filename: str = "ai_optimization_result.txt"):
+        """
+        保存答案优化结果到文件
+        
+        参数:
+            optimization_result: 优化结果
+            filename: 保存的文件名
+        """
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(f"待解答问题: {optimization_result['initial_question']}\n\n")
+                f.write("===== 答案优化过程 =====\n\n")
+                
+                for i, message in enumerate(optimization_result['conversation']):
+                    if message['role'] == "最终优化答案":
+                        continue  # 跳过，因为我们会在后面单独输出
+                    f.write(f"{message['role']}:\n{message['content']}\n\n")
+                    
+                f.write("===== 最终优化答案 =====\n\n")
+                f.write(optimization_result['final_result'])
+            
+            print(f"答案优化结果已保存到 {filename}")
+            self.log("info", f"答案优化结果已保存到 {filename}")
+        except Exception as e:
+            print(f"保存结果到文件失败: {str(e)}")
+            self.log("error", f"保存结果到文件失败: {str(e)}")
+            traceback.print_exc()
+
 class AIDebateWrapper(AIDebate):
     """AIDebate类的包装器，重定向输出到GUI"""
     
@@ -572,20 +763,21 @@ class AIDebateWrapper(AIDebate):
         self.total_rounds = 0
 
 def main():
-    parser = argparse.ArgumentParser(description="AI辩论：让两个AI进行辩论并得出综合结论")
+    parser = argparse.ArgumentParser(description="AI辩论或问题优化系统")
     parser.add_argument("--api_key1", type=str, required=True, help="第一个模型的API密钥")
     parser.add_argument("--api_key2", type=str, required=True, help="第二个模型的API密钥")
-    parser.add_argument("--question", type=str, default="人工智能是否会超越人类智能？", help="辩论主题/问题")
-    parser.add_argument("--rounds", type=int, default=3, help="辩论回合数")
+    parser.add_argument("--question", type=str, default="人工智能是否会超越人类智能？", help="辩论主题/问题或待优化问题")
+    parser.add_argument("--mode", type=str, choices=["debate", "optimization"], default="debate", help="工作模式：辩论或问题优化")
+    parser.add_argument("--rounds", type=int, default=3, help="辩论回合数或优化迭代次数")
     parser.add_argument("--model1", type=str, default="gpt-3.5-turbo", help="第一个AI模型")
     parser.add_argument("--model2", type=str, default="gpt-3.5-turbo", help="第二个AI模型")
     parser.add_argument("--temp1", type=float, default=0.7, help="第一个AI的温度参数")
     parser.add_argument("--temp2", type=float, default=0.7, help="第二个AI的温度参数")
-    parser.add_argument("--output", type=str, default="ai_debate_result.txt", help="输出文件名")
+    parser.add_argument("--output", type=str, help="输出文件名（默认根据模式自动生成）")
     parser.add_argument("--api_base1", type=str, help="第一个模型的API基础URL")
     parser.add_argument("--api_base2", type=str, help="第二个模型的API基础URL")
     parser.add_argument("--stream", action="store_true", help="启用流式输出")
-    parser.add_argument("--log", type=str, default="logs/debate.log", help="日志文件路径")
+    parser.add_argument("--log", type=str, default="logs/ai_system.log", help="日志文件路径")
     parser.add_argument("--log_level", type=str, default="info", choices=["debug", "info", "warning", "error"], help="日志级别")
     
     args = parser.parse_args()
@@ -635,7 +827,7 @@ def main():
         print(f"使用第二个模型的自定义API基础URL: {api_base2}")
     
     try:
-        print(f"初始化AI辩论，模型1: {args.model1}, 模型2: {args.model2}")
+        print(f"初始化AI系统，模式: {args.mode}, 模型1: {args.model1}, 模型2: {args.model2}")
         print(f"流式输出: {'启用' if args.stream else '禁用'}")
         print(f"日志记录: 文件={args.log}, 级别={args.log_level}")
         
@@ -645,7 +837,7 @@ def main():
             if log_dir and not os.path.exists(log_dir):
                 os.makedirs(log_dir)
         
-        debate = AIDebate(
+        ai_system = AIDebate(
             api_key1=api_key1,
             api_key2=api_key2,
             model1=args.model1,
@@ -659,14 +851,28 @@ def main():
             api_base2=api_base2
         )
         
-        print(f"开始辩论，主题: {args.question}")
-        result = debate.run_debate(args.question, args.rounds)
+        # 设置默认输出文件名
+        output_file = args.output
+        if not output_file:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            if args.mode == "debate":
+                output_file = f"ai_debate_result_{timestamp}.txt"
+            else:
+                output_file = f"ai_optimization_result_{timestamp}.txt"
         
-        print(f"保存结果到文件: {args.output}")
-        debate.save_debate(result, args.output)
+        # 根据模式执行不同操作
+        if args.mode == "debate":
+            print(f"开始辩论，主题: {args.question}")
+            result = ai_system.run_debate(args.question, args.rounds)
+            ai_system.save_debate(result, output_file)
+        else:  # optimization模式
+            print(f"开始优化问题: {args.question}")
+            result = ai_system.run_optimization(args.question, args.rounds)
+            ai_system.save_optimization(result, output_file)
         
         print("程序成功完成！")
-        print(f"完整对话日志可在logs目录中查看")
+        print(f"完整日志可在logs目录中查看")
+        print(f"结果已保存到: {output_file}")
     except Exception as e:
         print(f"程序运行出错: {str(e)}")
         traceback.print_exc()
