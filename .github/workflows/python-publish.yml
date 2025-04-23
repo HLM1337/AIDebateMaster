@@ -1,0 +1,78 @@
+name: 发布Python包
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: 设置Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install build twine setuptools wheel
+        
+    - name: 创建requirements.txt文件
+      run: |
+        cat > requirements.txt << 'EOL'
+        openai>=1.0.0
+        PyQt5>=5.15.0
+        EOL
+        
+    - name: 创建setup.py文件
+      run: |
+        cat > setup.py << 'EOL'
+        from setuptools import setup, find_packages
+
+        with open("README.md", "r", encoding="utf-8") as fh:
+            long_description = fh.read()
+
+        with open("requirements.txt", "r", encoding="utf-8") as f:
+            requirements = f.read().splitlines()
+
+        setup(
+            name="ai-debate-master",
+            version="0.1.0",
+            author="HLM1337",
+            author_email="author@example.com",
+            description="AI辩论平台，支持多种AI模型之间的辩论与答案优化",
+            long_description=long_description,
+            long_description_content_type="text/markdown",
+            url="https://github.com/HLM1337/AIDebateMaster",
+            packages=find_packages(),
+            classifiers=[
+                "Programming Language :: Python :: 3",
+                "License :: OSI Approved :: MIT License",
+                "Operating System :: OS Independent",
+            ],
+            python_requires=">=3.7",
+            install_requires=requirements,
+            entry_points={
+                "console_scripts": [
+                    "ai-debate=ai_debate:main",
+                    "ai-debate-gui=ai_debate_gui:main",
+                ],
+            },
+        )
+        EOL
+        
+    - name: 构建并检查包
+      run: |
+        python -m build
+        twine check dist/*
+        
+    - name: 发布到PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1 
