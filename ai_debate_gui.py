@@ -20,6 +20,54 @@ except ImportError:
     print("错误: 无法导入 AI 辩论模块。请确保 ai_debate.py 文件位于当前目录中。")
     sys.exit(1)
 
+class Translator:
+    """多语言支持类"""
+    def __init__(self):
+        self.current_lang = 'zh'  # 默认使用中文
+        self.translations = {}
+        self._load_translations()
+    
+    def _load_translations(self):
+        """加载所有可用的翻译文件"""
+        locales_dir = 'locales'
+        if not os.path.exists(locales_dir):
+            os.makedirs(locales_dir)
+            
+        for file in os.listdir(locales_dir):
+            if file.endswith('.json'):
+                lang = file[:-5]  # 移除.json后缀
+                with open(os.path.join(locales_dir, file), 'r', encoding='utf-8') as f:
+                    self.translations[lang] = json.load(f)
+    
+    def set_language(self, lang):
+        """设置当前语言"""
+        if lang in self.translations:
+            self.current_lang = lang
+            return True
+        return False
+    
+    def get_text(self, key, *args):
+        """获取翻译文本，支持格式化参数"""
+        # 支持使用点号访问嵌套的翻译键
+        keys = key.split('.')
+        text = self.translations.get(self.current_lang, {})
+        
+        for k in keys:
+            if isinstance(text, dict):
+                text = text.get(k, key)
+            else:
+                return key
+        
+        if isinstance(text, str) and args:
+            try:
+                return text.format(*args)
+            except:
+                return text
+        return text
+
+# 创建全局翻译器实例
+translator = Translator()
+
 class DebateWorker(QThread):
     """处理AI辩论的工作线程，防止UI冻结"""
     # 定义信号
@@ -40,11 +88,11 @@ class DebateWorker(QThread):
         """运行辩论或优化进程"""
         try:
             if not (self.config.get('api_key1') and self.config.get('api_key2')):
-                self.error_signal.emit("错误: 请为两个模型分别提供API密钥")
+                self.error_signal.emit(translator.get_text("error.api_keys_required"))
                 return
                 
             if not self.config['question']:
-                self.error_signal.emit("错误: 请提供辩论主题或待优化问题")
+                self.error_signal.emit(translator.get_text("error.topic_required"))
                 return
             
             # 检测模型类型和需要的API
@@ -56,47 +104,49 @@ class DebateWorker(QThread):
             is_custom_api = 'api_base1' in self.config and 'api_base2' in self.config
             
             if is_custom_api:
-                self.update_signal.emit("使用自定义API服务器...\n")
-                self.update_signal.emit(f"模型1自定义API基础URL: {self.config['api_base1']}\n")
-                self.update_signal.emit(f"模型2自定义API基础URL: {self.config['api_base2']}\n")
-                self.update_signal.emit(f"模型1名称: {model1}\n")
-                self.update_signal.emit(f"模型2名称: {model2}\n")
+                self.update_signal.emit(translator.get_text("ui.custom_api_label") + "\n")
+                self.update_signal.emit(translator.get_text("ui.model1_api", self.config['api_base1']) + "\n")
+                self.update_signal.emit(translator.get_text("ui.model2_api", self.config['api_base2']) + "\n")
+                self.update_signal.emit(translator.get_text("ui.model1_name", model1) + "\n")
+                self.update_signal.emit(translator.get_text("ui.model2_name", model2) + "\n")
             else:
                 # 检测模型类型
                 models_info = []
                 
                 if model1.startswith("deepseek-") or model2.startswith("deepseek-"):
-                    models_info.append("DeepSeek模型")
+                    models_info.append(translator.get_text("models.deepseek"))
                 
                 if model1.startswith("claude-") or model2.startswith("claude-"):
-                    models_info.append("Claude模型")
+                    models_info.append(translator.get_text("models.claude"))
                 
                 if model1.startswith("moonshot-") or model2.startswith("moonshot-"):
-                    models_info.append("Moonshot模型")
+                    models_info.append(translator.get_text("models.moonshot"))
                 
                 if model1.startswith("glm-") or model2.startswith("glm-"):
-                    models_info.append("ChatGLM模型")
+                    models_info.append(translator.get_text("models.chatglm"))
                     
                 if model1.startswith("qwen-") or model2.startswith("qwen-"):
-                    models_info.append("通义千问模型")
+                    models_info.append(translator.get_text("models.qwen"))
                     
                 if model1.startswith("ernie-") or model2.startswith("ernie-"):
-                    models_info.append("文心一言模型")
+                    models_info.append(translator.get_text("models.ernie"))
                 
                 if models_info:
-                    self.update_signal.emit(f"检测到以下模型类型: {', '.join(models_info)}\n")
+                    self.update_signal.emit(translator.get_text("ui.detected_models", ", ".join(models_info)) + "\n")
             
-            self.update_signal.emit("配置参数...\n")
-            self.update_signal.emit(f"工作模式: {'辩论模式' if work_mode == 'debate' else '问题优化模式'}\n")
-            self.update_signal.emit(f"模型1: {model1}, 温度: {self.config['temperature1']}\n")
-            self.update_signal.emit(f"模型2: {model2}, 温度: {self.config['temperature2']}\n")
+            self.update_signal.emit(translator.get_text("ui.configuring") + "\n")
+            self.update_signal.emit(translator.get_text("ui.work_mode", 
+                translator.get_text("mode.debate") if work_mode == 'debate' else translator.get_text("mode.optimization")) + "\n")
+            self.update_signal.emit(translator.get_text("ui.model_info", "1", model1, self.config['temperature1']) + "\n")
+            self.update_signal.emit(translator.get_text("ui.model_info", "2", model2, self.config['temperature2']) + "\n")
             
             if work_mode == 'debate':
-                self.update_signal.emit(f"辩论回合数: {self.config['rounds']}\n")
+                self.update_signal.emit(translator.get_text("ui.debate_rounds", self.config['rounds']) + "\n")
             else:
-                self.update_signal.emit(f"优化迭代次数: {self.config['rounds']}\n")
+                self.update_signal.emit(translator.get_text("ui.optimization_iterations", self.config['rounds']) + "\n")
                 
-            self.update_signal.emit(f"流式输出: {'启用' if self.config.get('stream', True) else '禁用'}\n")
+            self.update_signal.emit(translator.get_text("ui.streaming", 
+                translator.get_text("ui.enabled") if self.config.get('stream', True) else translator.get_text("ui.disabled")) + "\n")
             
             self.update_signal.emit("\n")  # 添加空行分隔
             
@@ -124,10 +174,10 @@ class DebateWorker(QThread):
             # 运行指定模式
             if work_mode == 'debate':
                 # 辩论模式
-                self.update_signal.emit(f"开始辩论:\n")
-                self.update_signal.emit(f"主题: {self.config['question']}\n")
-                self.update_signal.emit(f"正方: {model1} (温度: {self.config['temperature1']})\n")
-                self.update_signal.emit(f"反方: {model2} (温度: {self.config['temperature2']})\n")
+                self.update_signal.emit(translator.get_text("ui.debate_start") + "\n")
+                self.update_signal.emit(translator.get_text("ui.topic", self.config['question']) + "\n")
+                self.update_signal.emit(translator.get_text("ui.affirmative", model1, self.config['temperature1']) + "\n")
+                self.update_signal.emit(translator.get_text("ui.negative", model2, self.config['temperature2']) + "\n")
                 self.update_signal.emit("-" * 50 + "\n\n")
                 
                 # 运行辩论
@@ -137,10 +187,10 @@ class DebateWorker(QThread):
                 )
             else:
                 # 问题优化模式
-                self.update_signal.emit(f"开始答案优化:\n")
-                self.update_signal.emit(f"待解答问题: {self.config['question']}\n")
-                self.update_signal.emit(f"分析师: {model1} (温度: {self.config['temperature1']})\n")
-                self.update_signal.emit(f"优化师: {model2} (温度: {self.config['temperature2']})\n")
+                self.update_signal.emit(translator.get_text("ui.optimization_start") + "\n")
+                self.update_signal.emit(translator.get_text("ui.question", self.config['question']) + "\n")
+                self.update_signal.emit(translator.get_text("ui.analyst", model1, self.config['temperature1']) + "\n")
+                self.update_signal.emit(translator.get_text("ui.optimizer", model2, self.config['temperature2']) + "\n")
                 self.update_signal.emit("-" * 50 + "\n\n")
                 
                 # 运行问题优化
@@ -162,13 +212,13 @@ class DebateWorker(QThread):
                 with open(filename, 'w', encoding='utf-8') as f:
                     json.dump(result, f, ensure_ascii=False, indent=2)
                 
-                self.update_signal.emit(f"\n结果已保存至: {filename}\n")
+                self.update_signal.emit("\n" + translator.get_text("ui.save_result", filename) + "\n")
             
             # 辩论结束，发送结果信号
             self.finished_signal.emit(result)
             
         except Exception as e:
-            error_msg = f"过程中发生错误: {str(e)}"
+            error_msg = translator.get_text("error.process", str(e))
             print(f"错误详情: {str(e)}")
             import traceback
             traceback.print_exc()
@@ -327,17 +377,29 @@ class MainWindow(QMainWindow):
         # 创建主布局
         main_layout = QVBoxLayout(main_widget)
         
+        # 添加语言选择器
+        lang_layout = QHBoxLayout()
+        lang_label = QLabel('Language/语言:')
+        self.lang_combo = QComboBox()
+        self.lang_combo.addItems(['English', '简体中文'])
+        self.lang_combo.setCurrentText('简体中文')  # 默认选中中文
+        self.lang_combo.currentTextChanged.connect(self.change_language)
+        lang_layout.addWidget(lang_label)
+        lang_layout.addWidget(self.lang_combo)
+        lang_layout.addStretch()
+        main_layout.addLayout(lang_layout)
+        
         # 创建设置组
-        settings_group = QGroupBox("系统设置")
+        self.settings_group = QGroupBox("系统设置")
         settings_layout = QVBoxLayout()
         
         # 工作模式选择
         mode_layout = QHBoxLayout()
-        mode_label = QLabel("工作模式:")
+        self.mode_label = QLabel("工作模式:")
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["辩论模式", "问题优化模式"])
         self.mode_combo.currentIndexChanged.connect(self.on_mode_changed)
-        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(self.mode_label)
         mode_layout.addWidget(self.mode_combo)
         settings_layout.addLayout(mode_layout)
         
@@ -356,11 +418,11 @@ class MainWindow(QMainWindow):
         
         # 正方API基础URL输入框
         aff_api_url_layout = QHBoxLayout()
-        aff_api_url_label = QLabel("API基础URL:")
+        self.api_base1_label = QLabel("API基础URL:")
         self.aff_api_url_input = QLineEdit()
         self.aff_api_url_input.setPlaceholderText("例如: http://localhost:1234/v1")
         self.aff_api_url_input.setEnabled(False)
-        aff_api_url_layout.addWidget(aff_api_url_label)
+        aff_api_url_layout.addWidget(self.api_base1_label)
         aff_api_url_layout.addWidget(self.aff_api_url_input)
         aff_api_box_layout.addLayout(aff_api_url_layout)
         
@@ -376,10 +438,10 @@ class MainWindow(QMainWindow):
         
         # 正方API密钥
         aff_api_layout = QHBoxLayout()
-        aff_api_label = QLabel("API密钥:")
+        self.api_key1_label = QLabel("API密钥:")
         self.aff_api_key_input = QLineEdit()
         self.aff_api_key_input.setEchoMode(QLineEdit.Password)
-        aff_api_layout.addWidget(aff_api_label)
+        aff_api_layout.addWidget(self.api_key1_label)
         aff_api_layout.addWidget(self.aff_api_key_input)
         aff_api_box_layout.addLayout(aff_api_layout)
         
@@ -392,11 +454,11 @@ class MainWindow(QMainWindow):
         
         # 反方API基础URL输入框
         neg_api_url_layout = QHBoxLayout()
-        neg_api_url_label = QLabel("API基础URL:")
+        self.api_base2_label = QLabel("API基础URL:")
         self.neg_api_url_input = QLineEdit()
         self.neg_api_url_input.setPlaceholderText("例如: http://localhost:5678/v1")
         self.neg_api_url_input.setEnabled(False)
-        neg_api_url_layout.addWidget(neg_api_url_label)
+        neg_api_url_layout.addWidget(self.api_base2_label)
         neg_api_url_layout.addWidget(self.neg_api_url_input)
         neg_api_box_layout.addLayout(neg_api_url_layout)
         
@@ -412,10 +474,10 @@ class MainWindow(QMainWindow):
         
         # 反方API密钥
         neg_api_layout = QHBoxLayout()
-        neg_api_label = QLabel("API密钥:")
+        self.api_key2_label = QLabel("API密钥:")
         self.neg_api_key_input = QLineEdit()
         self.neg_api_key_input.setEchoMode(QLineEdit.Password)
-        neg_api_layout.addWidget(neg_api_label)
+        neg_api_layout.addWidget(self.api_key2_label)
         neg_api_layout.addWidget(self.neg_api_key_input)
         neg_api_box_layout.addLayout(neg_api_layout)
         
@@ -439,7 +501,7 @@ class MainWindow(QMainWindow):
         settings_layout.addLayout(topic_layout)
         
         # 创建模型选择组
-        model_group = QGroupBox("模型设置")
+        self.model_settings_group = QGroupBox("模型设置")
         model_layout = QHBoxLayout()
         
         # 可用的AI模型
@@ -495,12 +557,12 @@ class MainWindow(QMainWindow):
         
         # 模型1温度设置
         temp1_layout = QHBoxLayout()
-        temp1_label = QLabel("温度:")
+        self.temp1_label = QLabel("温度:")
         self.temp1_spin = QDoubleSpinBox()
         self.temp1_spin.setRange(0.0, 2.0)
         self.temp1_spin.setSingleStep(0.1)
         self.temp1_spin.setValue(0.7)
-        temp1_layout.addWidget(temp1_label)
+        temp1_layout.addWidget(self.temp1_label)
         temp1_layout.addWidget(self.temp1_spin)
         aff_layout.addLayout(temp1_layout)
         
@@ -516,19 +578,19 @@ class MainWindow(QMainWindow):
         
         # 模型2温度设置
         temp2_layout = QHBoxLayout()
-        temp2_label = QLabel("温度:")
+        self.temp2_label = QLabel("温度:")
         self.temp2_spin = QDoubleSpinBox()
         self.temp2_spin.setRange(0.0, 2.0)
         self.temp2_spin.setSingleStep(0.1)
         self.temp2_spin.setValue(0.7)
-        temp2_layout.addWidget(temp2_label)
+        temp2_layout.addWidget(self.temp2_label)
         temp2_layout.addWidget(self.temp2_spin)
         neg_layout.addLayout(temp2_layout)
         
         # 添加到模型布局
         model_layout.addLayout(aff_layout)
         model_layout.addLayout(neg_layout)
-        model_group.setLayout(model_layout)
+        self.model_settings_group.setLayout(model_layout)
         
         # 创建轮数和保存设置组
         rounds_group = QGroupBox("其他设置")
@@ -550,19 +612,19 @@ class MainWindow(QMainWindow):
         # 保存设置
         self.save_check = QCheckBox("保存结果")
         self.save_check.setChecked(True)
-        self.save_path_button = QPushButton("浏览...")
-        self.save_path_button.clicked.connect(self.browse_save_path)
+        self.browse_button = QPushButton("浏览...")
+        self.browse_button.clicked.connect(self.browse_save_path)
         self.save_path = "logs/result.json"
         
         rounds_layout.addWidget(self.save_check)
-        rounds_layout.addWidget(self.save_path_button)
+        rounds_layout.addWidget(self.browse_button)
         rounds_group.setLayout(rounds_layout)
         
         # 添加设置到主布局
-        settings_layout.addWidget(model_group)
+        settings_layout.addWidget(self.model_settings_group)
         settings_layout.addWidget(rounds_group)
-        settings_group.setLayout(settings_layout)
-        main_layout.addWidget(settings_group)
+        self.settings_group.setLayout(settings_layout)
+        main_layout.addWidget(self.settings_group)
         
         # 创建控制按钮
         button_layout = QHBoxLayout()
@@ -592,7 +654,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Vertical)
         
         # 创建输出区域
-        output_group = QGroupBox("处理过程")
+        self.output_settings_group = QGroupBox("处理过程")
         output_layout = QVBoxLayout()
         self.output_text = QTextEdit()
         self.output_text.setReadOnly(True)
@@ -600,7 +662,7 @@ class MainWindow(QMainWindow):
         # 启用自动滚动
         self.output_text.document().blockCountChanged.connect(self.scroll_to_bottom)
         output_layout.addWidget(self.output_text)
-        output_group.setLayout(output_layout)
+        self.output_settings_group.setLayout(output_layout)
         
         # 创建结论显示区域
         self.conclusion_group = QGroupBox("最终答案与观点")
@@ -612,7 +674,7 @@ class MainWindow(QMainWindow):
         self.conclusion_group.setLayout(conclusion_layout)
         
         # 添加到分割器
-        splitter.addWidget(output_group)
+        splitter.addWidget(self.output_settings_group)
         splitter.addWidget(self.conclusion_group)
         splitter.setSizes([500, 200])
         
@@ -628,25 +690,25 @@ class MainWindow(QMainWindow):
         
         # 更新标签文本
         if mode == "debate":
-            self.topic_label.setText("辩论问题:")
-            self.model1_label.setText("正方模型:")
-            self.model2_label.setText("反方模型:")
-            self.rounds_label.setText("辩论轮数:")
-            self.conclusion_group.setTitle("最终答案与观点")
-            self.start_button.setText("开始辩论")
+            self.topic_label.setText(translator.get_text("ui.topic_label"))
+            self.model1_label.setText(translator.get_text("ui.affirmative_model"))
+            self.model2_label.setText(translator.get_text("ui.negative_model"))
+            self.rounds_label.setText(translator.get_text("ui.debate_rounds_label"))
+            self.conclusion_group.setTitle(translator.get_text("ui.final_opinions"))
+            self.start_button.setText(translator.get_text("ui.start_debate"))
         else:
-            self.topic_label.setText("待解答问题:")
-            self.model1_label.setText("分析师模型:")
-            self.model2_label.setText("优化师模型:")
-            self.rounds_label.setText("答案优化次数:")
-            self.conclusion_group.setTitle("最终优化答案")
-            self.start_button.setText("开始优化")
+            self.topic_label.setText(translator.get_text("ui.question_label"))
+            self.model1_label.setText(translator.get_text("ui.analyst_model"))
+            self.model2_label.setText(translator.get_text("ui.optimizer_model"))
+            self.rounds_label.setText(translator.get_text("ui.optimization_iterations_label"))
+            self.conclusion_group.setTitle(translator.get_text("ui.final_answer"))
+            self.start_button.setText(translator.get_text("ui.start_optimization"))
         
         # 更新状态栏
         if mode == "debate":
-            self.statusBar().showMessage("已切换到辩论模式，通过多角度讨论获得高质量答案", 3000)
+            self.statusBar().showMessage(translator.get_text("ui.status_debate_mode"), 3000)
         else:
-            self.statusBar().showMessage("已切换到答案优化模式，通过持续分析和改进获得最佳答案", 3000)
+            self.statusBar().showMessage(translator.get_text("ui.status_optimization_mode"), 3000)
     
     def browse_save_path(self):
         """浏览保存路径对话框"""
@@ -662,7 +724,7 @@ class MainWindow(QMainWindow):
             self.save_path = file_name
             # 显示简短的文件名
             short_name = os.path.basename(file_name)
-            self.save_path_button.setText(f".../{short_name}")
+            self.browse_button.setText(f".../{short_name}")
     
     def toggle_custom_api(self, state):
         """切换是否使用自定义API设置"""
@@ -871,7 +933,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str)
     def show_error(self, error_message):
         """显示错误消息"""
-        QMessageBox.critical(self, "错误", error_message)
+        QMessageBox.critical(self, translator.get_text("error.title", "Error"), error_message)
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
     
@@ -892,6 +954,96 @@ class MainWindow(QMainWindow):
     def scroll_to_bottom(self):
         """滚动到文本框底部"""
         self.output_text.verticalScrollBar().setValue(self.output_text.verticalScrollBar().maximum())
+
+    def change_language(self, lang_text):
+        """切换界面语言"""
+        lang = 'en' if lang_text == 'English' else 'zh'
+        if translator.set_language(lang):
+            self.update_ui_texts()
+    
+    def update_ui_texts(self):
+        """更新界面上的所有文本"""
+        # 更新窗口标题
+        self.setWindowTitle(translator.get_text("ui.window_title"))
+        
+        # 更新设置组
+        self.settings_group.setTitle(translator.get_text("ui.settings"))
+        
+        # 更新模式选择
+        self.mode_label.setText(translator.get_text("ui.mode_label"))
+        mode_items = [
+            translator.get_text("mode.debate"),
+            translator.get_text("mode.optimization")
+        ]
+        current_index = self.mode_combo.currentIndex()
+        self.mode_combo.clear()
+        self.mode_combo.addItems(mode_items)
+        self.mode_combo.setCurrentIndex(current_index)
+        
+        # 更新API设置组
+        api_boxes = self.settings_group.findChildren(QGroupBox)
+        for box in api_boxes:
+            if box.title() == "API密钥设置":
+                box.setTitle(translator.get_text("ui.api_settings"))
+            elif box.title() == "模型1 API设置":
+                box.setTitle(translator.get_text("ui.model1_api_settings"))
+            elif box.title() == "模型2 API设置":
+                box.setTitle(translator.get_text("ui.model2_api_settings"))
+        
+        # 更新模型设置组
+        self.model_settings_group.setTitle(translator.get_text("ui.model_settings"))
+        
+        # 更新其他设置组
+        other_settings = self.settings_group.findChildren(QGroupBox)
+        for box in other_settings:
+            if box.title() == "其他设置":
+                box.setTitle(translator.get_text("ui.other_settings"))
+        
+        # 更新模型1设置
+        # 这里不更新model1_label和model2_label，因为它们在on_mode_changed中处理
+        self.temp1_label.setText(translator.get_text("ui.temperature"))
+        self.api_key1_label.setText(translator.get_text("ui.api_key"))
+        
+        # 更新模型2设置
+        self.temp2_label.setText(translator.get_text("ui.temperature"))
+        self.api_key2_label.setText(translator.get_text("ui.api_key"))
+        
+        # 更新自定义API设置
+        self.custom_api_check.setText(translator.get_text("ui.custom_api"))
+        if hasattr(self, 'api_base1_label'):
+            self.api_base1_label.setText(translator.get_text("ui.api_base_url"))
+        if hasattr(self, 'api_base2_label'):
+            self.api_base2_label.setText(translator.get_text("ui.api_base_url"))
+            
+        # 更新API提示信息
+        api_info_labels = self.settings_group.findChildren(QLabel)
+        for label in api_info_labels:
+            if "注意:" in label.text():
+                label.setText(translator.get_text("ui.api_provider_note"))
+        
+        # 更新回合数设置 - 根据模式在on_mode_changed中处理
+        
+        # 更新主题/问题输入 - 根据模式在on_mode_changed中处理
+        self.topic_input.setPlaceholderText(translator.get_text("ui.topic_placeholder"))
+        
+        # 更新输出设置组
+        self.output_settings_group.setTitle(translator.get_text("ui.processing"))
+        self.stream_check.setText(translator.get_text("ui.stream_output"))
+        self.save_check.setText(translator.get_text("ui.save_to_file"))
+        self.browse_button.setText(translator.get_text("ui.browse"))
+        
+        # 更新控制按钮 - 开始按钮根据模式在on_mode_changed中处理
+        self.stop_button.setText(translator.get_text("ui.stop"))
+        self.clear_button.setText(translator.get_text("ui.clear"))
+        
+        # 更新进度相关文本
+        progress_labels = self.findChildren(QLabel)
+        for label in progress_labels:
+            if label.text() == "进度:":
+                label.setText(translator.get_text("ui.progress"))
+        
+        # 再次调用on_mode_changed来更新与模式相关的文本
+        self.on_mode_changed(self.mode_combo.currentIndex())
 
 
 if __name__ == "__main__":
